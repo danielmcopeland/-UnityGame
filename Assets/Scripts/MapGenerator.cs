@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class MapGenerator : MonoBehaviour
 {
-  public MeshGenerator meshRenderer;
+  public MeshGeneratorOld meshRenderer;
   public int xSize;
   public int zSize;
   public int loadDistance = 2;
@@ -53,7 +53,7 @@ public class MapGenerator : MonoBehaviour
 
   private void loadChunk(int x, int z) {
     Debug.Log("Loading chunk: " + x + ", " + z);
-    MeshGenerator map = Instantiate(meshRenderer, new Vector3(0, yOffset, 0), Quaternion.identity);
+    MeshGeneratorOld map = Instantiate(meshRenderer, new Vector3(0, yOffset, 0), Quaternion.identity);
     map.xOffset = chunkSize * x;
     map.zOffset = chunkSize * z;
     loaded.Add(x + "," + z);

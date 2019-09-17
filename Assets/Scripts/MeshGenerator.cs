@@ -1,194 +1,235 @@
 ﻿using UnityEngine;
+using System.Collections;
 
-[RequireComponent(typeof(MeshFilter))]
-[ExecuteInEditMode]
-public class MeshGenerator : MonoBehaviour {
-  Mesh mesh;
+public static class MeshGenerator {
 
-  Vector3[] vertices;
-  int[] triangles;
-  Vector2[] uvs;
-  Color[] colors;
 
-  public Gradient gradient;
-  public float textureScale = 100;
-  public int totalScale = 1;
-  public int triangleScale = 4;
-  public int xSize = 100;
-  public int zSize = 100;
+	public static MeshData GenerateTerrainMesh(float[,] heightMap, MeshSettings meshSettings, int levelOfDetail) {
 
-  public int xOffset = 0;
-  public int zOffset = 0;
-  public int baseOffset = 25000;
-  public int baseOffset2 = 50000;
+		int skipIncrement = (levelOfDetail == 0)?1:levelOfDetail * 2;
+		int numVertsPerLine = meshSettings.numVertsPerLine;
 
-  public float largeNoiseDensity = 5f;
-  public float noiseDensity = 0.02f;
-  public float mapHeightScale = 35f;
+		Vector2 topLeft = new Vector2 (-1, 1) * meshSettings.meshWorldSize / 2f;
 
-  private float minTerrainHeight = 11;
-  private float maxTerrainHeight = 61;
+		MeshData meshData = new MeshData (numVertsPerLine, skipIncrement, meshSettings.useFlatShading);
 
-  private float _textureScale;
-  private int _totalScale;
-  private int _triangleScale;
-  private int _xSize;
-  private int _zSize;
-  private int _xOffset;
-  private int _zOffset;
-  private int _baseOffset;
-  private int _baseOffset2;
-  private float _largeNoiseDensity;
-  private float _noiseDensity;
-  private float _mapHeightScale;
+		int[,] vertexIndicesMap = new int[numVertsPerLine, numVertsPerLine];
+		int meshVertexIndex = 0;
+		int outOfMeshVertexIndex = -1;
 
-  // Start is called before the first frame update
-  void Start() {
-    GenerateMesh();
-    _textureScale = textureScale;
-    _totalScale = totalScale;
-    _triangleScale = triangleScale;
-    _xSize = xSize;
-    _zSize = zSize;
-    _xOffset = xOffset;
-    _zOffset = zOffset;
-    _baseOffset = baseOffset;
-    _baseOffset2 = baseOffset2;
-    _largeNoiseDensity = largeNoiseDensity;
-    _noiseDensity = noiseDensity;
-    _mapHeightScale = mapHeightScale;
-  }
+		for (int y = 0; y < numVertsPerLine; y ++) {
+			for (int x = 0; x < numVertsPerLine; x ++) {
+				bool isOutOfMeshVertex = y == 0 || y == numVertsPerLine - 1 || x == 0 || x == numVertsPerLine - 1;
+				bool isSkippedVertex = x > 2 && x < numVertsPerLine - 3 && y > 2 && y < numVertsPerLine - 3 && ((x - 2) % skipIncrement != 0 || (y - 2) % skipIncrement != 0);
+				if (isOutOfMeshVertex) {
+					vertexIndicesMap [x, y] = outOfMeshVertexIndex;
+					outOfMeshVertexIndex--;
+				} else if (!isSkippedVertex) {
+					vertexIndicesMap [x, y] = meshVertexIndex;
+					meshVertexIndex++;
+				}
+			}
+		}
 
-  private void Awake() {
-    //MeshCollider meshCollider = gameObject.AddComponent<MeshCollider>();
-    //meshCollider.sharedMesh = mesh;
-  }
+		for (int y = 0; y < numVertsPerLine; y ++) {
+			for (int x = 0; x < numVertsPerLine; x++) {
+				bool isSkippedVertex = x > 2 && x < numVertsPerLine - 3 && y > 2 && y < numVertsPerLine - 3 && ((x - 2) % skipIncrement != 0 || (y - 2) % skipIncrement != 0);
 
-  // Update is called once per frame
-  void Update() {
-    if(_textureScale != textureScale ||
-       _totalScale != totalScale ||
-       _triangleScale != triangleScale ||
-       _xSize != xSize ||
-       _zSize != zSize ||
-       _xOffset != xOffset ||
-       _zOffset != zOffset ||
-       _baseOffset != baseOffset ||
-       _baseOffset2 != baseOffset2 ||
-       _largeNoiseDensity != largeNoiseDensity ||
-       _noiseDensity != noiseDensity ||
-       _mapHeightScale != mapHeightScale) {
+				if (!isSkippedVertex) {
+					bool isOutOfMeshVertex = y == 0 || y == numVertsPerLine - 1 || x == 0 || x == numVertsPerLine - 1;
+					bool isMeshEdgeVertex = (y == 1 || y == numVertsPerLine - 2 || x == 1 || x == numVertsPerLine - 2) && !isOutOfMeshVertex;
+					bool isMainVertex = (x - 2) % skipIncrement == 0 && (y - 2) % skipIncrement == 0 && !isOutOfMeshVertex && !isMeshEdgeVertex;
+					bool isEdgeConnectionVertex = (y == 2 || y == numVertsPerLine - 3 || x == 2 || x == numVertsPerLine - 3) && !isOutOfMeshVertex && !isMeshEdgeVertex && !isMainVertex;
 
-      GenerateMesh();
-      _textureScale = textureScale;
-      _totalScale = totalScale;
-      _triangleScale = triangleScale;
-      _xSize = xSize;
-      _zSize = zSize;
-      _xOffset = xOffset;
-      _zOffset = zOffset;
-      _baseOffset = baseOffset;
-      _baseOffset2 = baseOffset2;
-      _largeNoiseDensity = largeNoiseDensity;
-      _noiseDensity = noiseDensity;
-      _mapHeightScale = mapHeightScale;
-    }
-  }
+					int vertexIndex = vertexIndicesMap [x, y];
+					Vector2 percent = new Vector2 (x - 1, y - 1) / (numVertsPerLine - 3);
+					Vector2 vertexPosition2D = topLeft + new Vector2(percent.x,-percent.y) * meshSettings.meshWorldSize;
+					float height = heightMap [x, y];
 
-  public void GenerateMesh() {
-    mesh = new Mesh();
-    GetComponent<MeshFilter>().mesh = mesh;
+					if (isEdgeConnectionVertex) {
+						bool isVertical = x == 2 || x == numVertsPerLine - 3;
+						int dstToMainVertexA = ((isVertical)?y - 2:x-2) % skipIncrement;
+						int dstToMainVertexB = skipIncrement - dstToMainVertexA;
+						float dstPercentFromAToB = dstToMainVertexA / (float)skipIncrement;
 
-    CreateShape();
-    UpdateMesh();
-    //yield return new WaitForSeconds(2f);
-  }
+						float heightMainVertexA = heightMap [(isVertical) ? x : x - dstToMainVertexA, (isVertical) ? y - dstToMainVertexA : y];
+						float heightMainVertexB = heightMap [(isVertical) ? x : x + dstToMainVertexB, (isVertical) ? y + dstToMainVertexB : y];
 
-  void CreateShape() {
-    vertices = new Vector3[((xSize / triangleScale) + 1) * ((zSize / triangleScale) + 1)];
+						height = heightMainVertexA * (1 - dstPercentFromAToB) + heightMainVertexB * dstPercentFromAToB;
+					}
 
-    for(int i = 0, z = 0; z <= zSize; z += triangleScale) {
-      for(int x = 0; x <= xSize; x += triangleScale) {
-        float perlinMultiplier = Mathf.PerlinNoise((x + xOffset + baseOffset2) * (largeNoiseDensity / 1000) / totalScale, (z + zOffset + baseOffset2) * (largeNoiseDensity / 1000) / totalScale);
-        float y = Mathf.PerlinNoise((x + xOffset + baseOffset) * noiseDensity / totalScale, (z + zOffset + baseOffset) * noiseDensity / totalScale) * mapHeightScale * perlinMultiplier;
-        vertices[i] = new Vector3((x + xOffset), y, (z + zOffset));
-        i++;
-        /*if(i == 0) {
-          maxTerrainHeight = y;
-          minTerrainHeight = y;
-        }
-        else if(y > maxTerrainHeight) {
-          maxTerrainHeight = y;
-        }
-        else if(y < minTerrainHeight) {
-          minTerrainHeight = y;
-        }*/
-      }
-    }
+					meshData.AddVertex (new Vector3(vertexPosition2D.x, height, vertexPosition2D.y), percent, vertexIndex);
 
-    triangles = new int[(xSize / triangleScale) * (zSize / triangleScale) * 6];
+					bool createTriangle = x < numVertsPerLine - 1 && y < numVertsPerLine - 1 && (!isEdgeConnectionVertex || (x != 2 && y != 2));
 
-    int vert = 0;
-    int tris = 0;
+					if (createTriangle) {
+						int currentIncrement = (isMainVertex && x != numVertsPerLine - 3 && y != numVertsPerLine - 3) ? skipIncrement : 1;
 
-    for(int z = 0; z < zSize; z += triangleScale) {
-      for(int x = 0; x < xSize; x += triangleScale) {
-        triangles[tris + 0] = vert + 0;
-        triangles[tris + 1] = vert + (xSize / triangleScale) + 1;
-        triangles[tris + 2] = vert + 1;
-        triangles[tris + 3] = vert + 1;
-        triangles[tris + 4] = vert + (xSize / triangleScale) + 1;
-        triangles[tris + 5] = vert + (xSize / triangleScale) + 2;
+						int a = vertexIndicesMap [x, y];
+						int b = vertexIndicesMap [x + currentIncrement, y];
+						int c = vertexIndicesMap [x, y + currentIncrement];
+						int d = vertexIndicesMap [x + currentIncrement, y + currentIncrement];
+						meshData.AddTriangle (a, d, c);
+						meshData.AddTriangle (d, a, b);
+					}
+				}
+			}
+		}
 
-        vert++;
-        tris += 6;
-      }
-      vert++;
-    }
+		meshData.ProcessMesh ();
 
-    uvs = new Vector2[vertices.Length];
-    for(int i = 0, z = 0; z <= zSize; z += triangleScale) {
-      for(int x = 0; x <= xSize; x += triangleScale) {
-        uvs[i] = new Vector2(textureScale * ((float)x / xSize), textureScale * ((float)z / zSize));
-        i++;
-      }
-    }
+		return meshData;
 
-    colors = new Color[vertices.Length];
-    for(int i = 0, z = 0; z <= zSize; z += triangleScale) {
-      for(int x = 0; x <= xSize; x += triangleScale) {
-        float height = Mathf.InverseLerp(minTerrainHeight, maxTerrainHeight, vertices[i].y);
-        //float height = Mathf.InverseLerp(1, 10, vertices[i].y);
-        colors[i] = gradient.Evaluate(height);
-        i++;
-      }
-    }
-  }
+	}
+}
 
-  void UpdateMesh() {
-    mesh.Clear();
+public class MeshData {
+	Vector3[] vertices;
+	int[] triangles;
+	Vector2[] uvs;
+	Vector3[] bakedNormals;
 
-    mesh.vertices = vertices;
-    mesh.triangles = triangles;
-    //mesh.uv = uvs;
-    mesh.colors = colors;
-    mesh.RecalculateNormals();
+	Vector3[] outOfMeshVertices;
+	int[] outOfMeshTriangles;
 
-    GetComponent<MeshCollider>().sharedMesh = mesh;
-    //GetComponent<MeshCollider>().sharedMaterial = PhysicMaterial.
+	int triangleIndex;
+	int outOfMeshTriangleIndex;
 
-  }
+	bool useFlatShading;
 
-  /*
-  private void OnDrawGizmos()
-  {
-      if (vertices == null)
-          return;
+	public MeshData(int numVertsPerLine, int skipIncrement, bool useFlatShading) {
+		this.useFlatShading = useFlatShading;
 
-      for(int i = 0; i < vertices.Length; i++)
-      {
-          Gizmos.DrawSphere(vertices[i], 0.1f);
-      }
-  }
-  */
+		int numMeshEdgeVertices = (numVertsPerLine - 2) * 4 - 4;
+		int numEdgeConnectionVertices = (skipIncrement - 1) * (numVertsPerLine - 5) / skipIncrement * 4;
+		int numMainVerticesPerLine = (numVertsPerLine - 5) / skipIncrement + 1;
+		int numMainVertices = numMainVerticesPerLine * numMainVerticesPerLine;
+
+		vertices = new Vector3[numMeshEdgeVertices + numEdgeConnectionVertices + numMainVertices];
+		uvs = new Vector2[vertices.Length];
+
+		int numMeshEdgeTriangles = 8 * (numVertsPerLine - 4);
+		int numMainTriangles = (numMainVerticesPerLine - 1) * (numMainVerticesPerLine - 1) * 2;
+		triangles = new int[(numMeshEdgeTriangles + numMainTriangles) * 3];
+
+		outOfMeshVertices = new Vector3[numVertsPerLine * 4 - 4];
+		outOfMeshTriangles = new int[24 * (numVertsPerLine-2)];
+	}
+
+	public void AddVertex(Vector3 vertexPosition, Vector2 uv, int vertexIndex) {
+		if (vertexIndex < 0) {
+			outOfMeshVertices [-vertexIndex - 1] = vertexPosition;
+		} else {
+			vertices [vertexIndex] = vertexPosition;
+			uvs [vertexIndex] = uv;
+		}
+	}
+
+	public void AddTriangle(int a, int b, int c) {
+		if (a < 0 || b < 0 || c < 0) {
+			outOfMeshTriangles [outOfMeshTriangleIndex] = a;
+			outOfMeshTriangles [outOfMeshTriangleIndex + 1] = b;
+			outOfMeshTriangles [outOfMeshTriangleIndex + 2] = c;
+			outOfMeshTriangleIndex += 3;
+		} else {
+			triangles [triangleIndex] = a;
+			triangles [triangleIndex + 1] = b;
+			triangles [triangleIndex + 2] = c;
+			triangleIndex += 3;
+		}
+	}
+
+	Vector3[] CalculateNormals() {
+
+		Vector3[] vertexNormals = new Vector3[vertices.Length];
+		int triangleCount = triangles.Length / 3;
+		for (int i = 0; i < triangleCount; i++) {
+			int normalTriangleIndex = i * 3;
+			int vertexIndexA = triangles [normalTriangleIndex];
+			int vertexIndexB = triangles [normalTriangleIndex + 1];
+			int vertexIndexC = triangles [normalTriangleIndex + 2];
+
+			Vector3 triangleNormal = SurfaceNormalFromIndices (vertexIndexA, vertexIndexB, vertexIndexC);
+			vertexNormals [vertexIndexA] += triangleNormal;
+			vertexNormals [vertexIndexB] += triangleNormal;
+			vertexNormals [vertexIndexC] += triangleNormal;
+		}
+
+		int borderTriangleCount = outOfMeshTriangles.Length / 3;
+		for (int i = 0; i < borderTriangleCount; i++) {
+			int normalTriangleIndex = i * 3;
+			int vertexIndexA = outOfMeshTriangles [normalTriangleIndex];
+			int vertexIndexB = outOfMeshTriangles [normalTriangleIndex + 1];
+			int vertexIndexC = outOfMeshTriangles [normalTriangleIndex + 2];
+
+			Vector3 triangleNormal = SurfaceNormalFromIndices (vertexIndexA, vertexIndexB, vertexIndexC);
+			if (vertexIndexA >= 0) {
+				vertexNormals [vertexIndexA] += triangleNormal;
+			}
+			if (vertexIndexB >= 0) {
+				vertexNormals [vertexIndexB] += triangleNormal;
+			}
+			if (vertexIndexC >= 0) {
+				vertexNormals [vertexIndexC] += triangleNormal;
+			}
+		}
+
+
+		for (int i = 0; i < vertexNormals.Length; i++) {
+			vertexNormals [i].Normalize ();
+		}
+
+		return vertexNormals;
+
+	}
+
+	Vector3 SurfaceNormalFromIndices(int indexA, int indexB, int indexC) {
+		Vector3 pointA = (indexA < 0)?outOfMeshVertices[-indexA-1] : vertices [indexA];
+		Vector3 pointB = (indexB < 0)?outOfMeshVertices[-indexB-1] : vertices [indexB];
+		Vector3 pointC = (indexC < 0)?outOfMeshVertices[-indexC-1] : vertices [indexC];
+
+		Vector3 sideAB = pointB - pointA;
+		Vector3 sideAC = pointC - pointA;
+		return Vector3.Cross (sideAB, sideAC).normalized;
+	}
+
+	public void ProcessMesh() {
+		if (useFlatShading) {
+			FlatShading ();
+		} else {
+			BakeNormals ();
+		}
+	}
+
+	void BakeNormals() {
+		bakedNormals = CalculateNormals ();
+	}
+
+	void FlatShading() {
+		Vector3[] flatShadedVertices = new Vector3[triangles.Length];
+		Vector2[] flatShadedUvs = new Vector2[triangles.Length];
+
+		for (int i = 0; i < triangles.Length; i++) {
+			flatShadedVertices [i] = vertices [triangles [i]];
+			flatShadedUvs [i] = uvs [triangles [i]];
+			triangles [i] = i;
+		}
+
+		vertices = flatShadedVertices;
+		uvs = flatShadedUvs;
+	}
+
+	public Mesh CreateMesh() {
+		Mesh mesh = new Mesh ();
+		mesh.vertices = vertices;
+		mesh.triangles = triangles;
+		mesh.uv = uvs;
+		if (useFlatShading) {
+			mesh.RecalculateNormals ();
+		} else {
+			mesh.normals = bakedNormals;
+		}
+		return mesh;
+	}
+
 }
