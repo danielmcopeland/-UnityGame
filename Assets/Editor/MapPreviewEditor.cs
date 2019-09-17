@@ -7,7 +7,7 @@ public class MapPreviewEditor : Editor {
 
 	public override void OnInspectorGUI() {
 		MapPreview mapPreview = (MapPreview)target;
-
+		Debug.Log("test00");
 		if (DrawDefaultInspector ()) {
 			if (mapPreview.autoUpdate) {
 				mapPreview.DrawMapInEditor ();
