@@ -76,7 +76,7 @@
     <Compile Include="Assets\Scripts\TextureGenerator.cs" />
     <Compile Include="Assets\Scripts\ThreadedDataRequester.cs" />
     <None Include="Assets\Scripts\Terrain.shader" />
-    <None Include="Assets\Shaders\Terrain.shader" />
+    <None Include="Assets\Shaders\AngleTerrain.shader" />
     <Reference Include="Unity.TextMeshPro.Editor">
       <HintPath>R:/git/UnityGame/Library/ScriptAssemblies/Unity.TextMeshPro.Editor.dll</HintPath>
     </Reference>
